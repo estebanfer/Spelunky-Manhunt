@@ -1,29 +1,39 @@
 meta.name = 'Spelunky Manhunt'
-meta.version = '1.1'
+meta.version = '1.2'
 meta.description = 'Spawns an angry hired hand at every level'
 meta.author = 'Estebanfer'
---problems when a hh revives again with necro, and you get in or out of the necro radius
---bug when restart at first frame, also when shortcut?
-reviving = false
-count = 0
 
-hh_uid = 0
-hh = nil
-pl_layer = 0
-cycle = 0
-elapsed = 0
-DEFAULT_ACCELERATION = 0.032
-DEFAULT_MAX_SPEED = 0.0725
+local reviving = false
+local count = 0
+
+local hh_uid = 0
+local hh = nil
+local pl_layer = 0
+local door_cycle = 0
+local DEFAULT_ACCELERATION = 0.032
+local DEFAULT_MAX_SPEED = 0.0725
+
+local bx1, by1, bx2, by2 --bounds
+local ghost = 0
+local lastspos = {0, 0, 0} --last second position
+local lastpos = {0, 0, 0}
+local door_x = 0
+local door_y = 0
+local layer_flag = true
+local can_go_door = true
+local platform_nspawned = true
 local char_type = ENT_TYPE.CHAR_HIREDHAND
 local closest_player = -1
-function default_settings()
+
+local hh_health, hh_ghost_check, hh_revive_check, hh_angry_ghost_check, hh_revive_time, hh_revive_stun_time, hh_stun_start, hh_take_no_damage_check, hh_speed, kill_hhs_check, hh_no_corpse_revive_check, gh_velocity
+local function default_settings() 
   hh_health = 4
   hh_ghost_check = true
   hh_revive_check = true
   hh_angry_ghost_check = false
   hh_revive_time = 3
   hh_revive_stun_time = 60
-  hh_stun_start = 1
+  hh_stun_start = 2
   hh_take_no_damage_check = false
   hh_speed = 1
   kill_hhs_check = false
@@ -31,26 +41,12 @@ function default_settings()
   gh_velocity = 4
 end
 default_settings()
-ghost = 0
-lastspos = {0, 0, 0} --last second position
-lastpos = {0, 0, 0}
-door_x = 0
-door_y = 0
-layer_flag = true
-can_go_door = true
-platform_nspawned = true
-first_spawn = true
 
-names = {}
-for i,v in pairs(ENT_TYPE) do
-  names[v] = i
-end
-
-function closest(num)
+local function closest(num)
   return math.floor(num+0.5)
 end
 
-function get_blocks(floors)
+local function get_blocks(floors)
   local blocks = {}
   for i, v in ipairs(floors) do
       local flags = get_entity_flags(v)
@@ -61,7 +57,7 @@ function get_blocks(floors)
   return blocks
 end
 
-function set_hh_values(hh_uid)
+local function set_hh_values(hh_uid)
   hh = get_entity(hh_uid)
   if hh_take_no_damage_check then hh.flags = set_flag(hh.flags, 6) end --take no damage
   hh.flags = set_flag(hh.flags, 4)
@@ -93,23 +89,7 @@ local function spawn_necro_hh(char_type, x, y, l)
   set_hh_values(hh_uid)
 end
 
-function get_new_hh()
-  local thhs = get_entities_by_type(char_type)
-  local hh_uid, hh --not tested
-  if #thhs == 1 then
-    hh_uid = thhs[1]
-  else
-    for i,v in ipairs(thhs) do
-      if get_entity(v).stun_timer ~= 0 then
-        hh_uid = v
-      end
-    end
-  end
-  hh = get_entity(hh_uid)
-  return hh_uid, hh
-end
-
-function spawn_new_hh_apart()
+local function spawn_new_hh_apart()
   local tospawn_x, tospawn_y
   if state.theme == THEME.OLMEC then
     tospawn_x, tospawn_y = 4, 118
@@ -134,14 +114,14 @@ function spawn_new_hh_apart()
   reviving = false
 end
 
-function layer_changed()
+local function layer_changed()
   local time = math.floor(distance(players[1].uid, hh_uid) * 15)
   can_go_door = false
   set_timeout(function() can_go_door = true end, time)
   door_x, door_y = get_position(players[1].uid)
 end
 
-function goto_door()
+local function goto_door()
   if hh.health == 0 and not hh_revive_check then
     return
   end
@@ -174,15 +154,15 @@ local function frame_interval()
       layer_flag = false
     end
   else layer_flag = true end
-  if hhl ~= pl and can_go_door and ghost == 0 and not test_flag(hh.flags, 29) and cycle == 0 then
+  if hhl ~= pl and can_go_door and ghost == 0 and not test_flag(hh.flags, 29) and door_cycle == 0 then
     goto_door()
   else
     return_input(hh_uid)
   end
-  if cycle >= 5 then
-    cycle = 0
+  if door_cycle >= 5 then
+    door_cycle = 0
   else
-    cycle = cycle + 1
+    door_cycle = door_cycle + 1
   end
   pl_layer = pl
   local hhvx, hhvy = get_velocity(hh_uid)
@@ -207,7 +187,6 @@ end
 
 set_callback(function()
   sacd = false
-  first_spawn = true
   platform_nspawned = true
   count = 0
   hh = nil
@@ -218,6 +197,7 @@ set_callback(function()
   can_go_door = false
   layer_flag = true
   reviving = false
+  bx1, by1, bx2, by2 = get_bounds()
   if to_ghost_intv ~= nil then clear_callback(to_ghost_intv) end
   if toClear ~= nil then clear_callback(toClear) end
   set_timeout(function()
@@ -335,6 +315,13 @@ function ghostf()
   gh.velocity_multiplier = gh_vel*gh_vel*(gh_velocity/2)
   local px, py, pl = get_position(players[1].uid)
   local gx, gy, gl = get_position(ghost)
+
+  --CO fixes
+  if gx > bx2 then move_entity(ghost, bx1, gy, 0, 0)
+  elseif gx < bx1 then move_entity(ghost, bx2, gy, 0, 0) end
+  if gy > by1 then move_entity(ghost, gx, by2, 0, 0)
+  elseif gy < by2 then move_entity(ghost, gx, by1, 0, 0) end
+
   local hhx, hhy, hhl = get_position(hh_uid)
   local ents = get_entities_at(0, MASK.FLOOR, gx, gy, gl, 0.7)
   ents = get_blocks(ents)
@@ -390,7 +377,7 @@ set_callback(function(draw_ctx)
       if draw_ctx:win_button("Reset settings") then
         default_settings()
       end
-      hh_stun_start = draw_ctx:win_slider_int("Extra seconds a HH is stunned at start", hh_stun_start, 0, 10)
+      hh_stun_start = draw_ctx:win_slider_int("Seconds a HH is stunned at start", hh_stun_start, 0, 10)
       hh_ghost_check = draw_ctx:win_check("Hired hand can become a ghost when is far", hh_ghost_check)
       hh_revive_check = draw_ctx:win_check("Hired hand can revive", hh_revive_check)
       hh_angry_ghost_check = draw_ctx:win_check("Hired hand can become angry ghost when no corpse", hh_angry_ghost_check)
