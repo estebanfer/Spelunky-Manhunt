@@ -2,7 +2,7 @@ meta.name = 'Spelunky Manhunt'
 meta.version = '1.2'
 meta.description = 'Spawns an angry hired hand at every level'
 meta.author = 'Estebanfer'
-
+--hh can't go trough layer doors, and still have to change somethings of distance when hh ghost
 local reviving = false
 local count = 0
 
