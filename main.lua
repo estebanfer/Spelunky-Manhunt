@@ -23,7 +23,7 @@ local layer_flag = true
 local can_go_door = true
 local platform_nspawned = true
 local char_type = ENT_TYPE.CHAR_HIREDHAND
-local closest_player = -1
+local target_player
 
 local hh_health, hh_ghost_check, hh_revive_check, hh_angry_ghost_check, hh_revive_time, hh_revive_stun_time, hh_stun_start, hh_take_no_damage_check, hh_speed, kill_hhs_check, hh_no_corpse_revive_check, gh_velocity
 local function default_settings() 
@@ -44,6 +44,19 @@ default_settings()
 
 local function closest(num)
   return math.floor(num+0.5)
+end
+
+local function closest_player_distance()
+  local dist = -1
+  for i, p in ipairs(players) do
+    if not test_flag(p.flags, ENT_FLAG.DEAD) then
+      local temp_dist = distance(hh_uid, p.uid)
+      if temp_dist ~= -1 then
+        dist = math.min(dist, temp_dist)
+      end
+    end
+  end
+  return dist
 end
 
 local function get_blocks(floors)
@@ -71,17 +84,6 @@ local function set_hh_values(hh_uid)
   hht.max_speed = DEFAULT_MAX_SPEED*hh_speed
   set_timeout(function() hh.flags = clr_flag(hh.flags, 4) end, hh_stun_start*60)
   hh.health = hh_health
-  --[[if state.theme ~= COSMIC_OCEAN then
-    move_entity(hh_uid, 20, 300, 0, 0)
-  end
-  hh.flags = set_flag(hh.flags, 5)
-  hh.flags = set_flag(hh.flags, 10)
-  hh.stun_timer = hh_revive_time*60-1
-  set_timeout(function()
-    move_entity(hh_uid, lastpos[1], lastpos[2], 0, 0)
-    spawn_hh_ghost()
-    to_ghost_intv = set_interval(to_ghost, 60)
-  end, hh_revive_time*60)]]
 end
 
 local function spawn_necro_hh(char_type, x, y, l)
@@ -105,7 +107,7 @@ local function spawn_new_hh_apart()
   end
   hh.flags = set_flag(hh.flags, 5)
   hh.flags = set_flag(hh.flags, 10)
-  hh.stun_timer = hh_revive_time*60-1
+  hh:stun(hh_revive_time*60-1)
   set_timeout(function()
     move_entity(hh_uid, lastpos[1], lastpos[2], 0, 0)
     spawn_hh_ghost()
@@ -115,17 +117,17 @@ local function spawn_new_hh_apart()
 end
 
 local function layer_changed()
-  local time = math.floor(distance(players[1].uid, hh_uid) * 15)
+  local time = math.floor(distance(target_player.uid, hh_uid) * 15)
   can_go_door = false
   set_timeout(function() can_go_door = true end, time)
-  door_x, door_y = get_position(players[1].uid)
+  door_x, door_y = get_position(target_player.uid)
 end
 
 local function goto_door()
   if hh.health == 0 and not hh_revive_check then
     return
   end
-  local px, py, pl = get_position(players[1].uid)
+  local px, py, pl = get_position(target_player.uid)
   local hhx, hhy, hhl = get_position(hh_uid)
   if hh.stun_timer == 0 and hh.state ~= 12 and #get_entities_at(0, MASK.LAVA, door_x, door_y, hhl, 0.5) == 0 and ghost == 0 then
     if hhx ~= door_x then
@@ -138,7 +140,18 @@ end
 
 local function frame_interval()
   if ghost ~= 0 then ghostf() end
-  if players[1] == nil or hh == nil then return end
+  if target_player == nil or hh == nil then return end
+  if hh.ai then
+    if hh.ai.target == nil then
+      target_player = players[1]
+      messpect(players[1].uid)
+    else
+      target_player = hh.ai.target
+      messpect(hh.ai.target.uid)
+    end
+  else
+    messpect('no')
+  end
   local hhx, hhy, hhl = get_position(hh_uid)
   if hhy < 0 then
     move_entity(hh_uid, hhx, 2, 0, 0)
@@ -147,8 +160,8 @@ local function frame_interval()
   if get_entity_type(hh_uid) == ENT_TYPE.CHAR_HIREDHAND and hhy < 200 then
     lastpos[1], lastpos[2], lastpos[3] = get_position(hh_uid)
   end
-  local px, py, pl = get_position(players[1].uid)
-  if players[1].state == 21 and pl_layer ~= pl then
+  local px, py, pl = get_position(target_player.uid)
+  if target_player.state == 21 and pl_layer ~= pl then
     if layer_flag and hhl ~= pl then
       layer_changed()
       layer_flag = false
@@ -186,6 +199,7 @@ local function frame_interval()
 end
 
 set_callback(function()
+  target_player = players[1]
   sacd = false
   platform_nspawned = true
   count = 0
@@ -204,8 +218,8 @@ set_callback(function()
     to_ghost_intv = set_interval(to_ghost, 60) 
     set_interval(frame_interval, 1)
   end, 5)
-  local x, y, layer = get_position(players[1].uid)
-  if players[1]:topmost_mount().uid ~= players[1].uid then
+  local x, y, layer = get_position(target_player.uid)
+  if target_player:topmost_mount().uid ~= target_player.uid then
     y = y - 0.5
   end
   spawn_x = closest(x)
@@ -257,7 +271,7 @@ function spawn_hh_ghost()
 end
 
 function to_ghost()
-  if players[1] == nil then return end
+  if target_player == nil then return end
   if get_entity_type(hh_uid) ~= char_type then
     if hh_uid == 0 then return end
     clear_callback(to_ghost_intv)
@@ -268,8 +282,8 @@ function to_ghost()
     return
   end
   local hhx, hhy, hhl = get_position(hh_uid)
-  local px, py, pl = get_position(players[1].uid)
-  if hh_ghost_check and ghost == 0 and ( math.abs(py-hhy) > 4 or distance(players[1].uid, hh_uid) > 8 ) and ( math.abs(py-hhy) > 4 or math.abs(lastspos[1]-hhx) < 2 ) and math.abs(lastspos[2]-hhy) < 2 and hhl == pl then --distance(players[1].uid, hh_uid) > 8 and (hh_revive_check or not test_flag(hh.flags, 29))
+  local px, py, pl = get_position(target_player.uid)
+  if hh_ghost_check and ghost == 0 and ( math.abs(py-hhy) > 4 or closest_player_distance() > 8 ) and ( math.abs(py-hhy) > 4 or math.abs(lastspos[1]-hhx) < 2 ) and math.abs(lastspos[2]-hhy) < 2 and hhl == pl then --distance(target_player.uid, hh_uid) > 8 and (hh_revive_check or not test_flag(hh.flags, 29))
     if ( not test_flag(hh.flags, 29) and count > 2 ) then --or ( test_flag(hh.flags, 29) and count >= hh_revive_time ) then
       spawn_hh_ghost()
     end
@@ -292,7 +306,7 @@ function to_ghost()
       hh.flags = clr_flag(hh.flags, 29)
       hh.health = hh_health
       if #get_entities_at(0, MASK.LAVA, hhx, hhy, hhl, 0.8) == 0 then
-        hh.stun_timer = hh_revive_stun_time
+        hh:stun(hh_revive_stun_time)
       else
         spawn_hh_ghost()
       end
@@ -303,7 +317,7 @@ end
 
 function ghostf()
   local gh = get_entity(ghost)
-  if players[1] == nil or hh_uid == 0 then
+  if target_player == nil or hh_uid == 0 then
     if get_entity_type(ghost) == ENT_TYPE.MONS_GHOST_SMALL_SAD then
       kill_entity(ghost)
       ghost = 0
@@ -311,9 +325,9 @@ function ghostf()
     return
   end
   if get_entity_type(ghost) ~= ENT_TYPE.MONS_GHOST_SMALL_SAD and get_entity_type(ghost) ~= ENT_TYPE.MONS_GHOST_SMALL_ANGRY then return end
-  local gh_vel = distance(players[1].uid, ghost) / 40 + 1
+  local gh_vel = distance(target_player.uid, ghost) / 40 + 1
   gh.velocity_multiplier = gh_vel*gh_vel*(gh_velocity/2)
-  local px, py, pl = get_position(players[1].uid)
+  local px, py, pl = get_position(target_player.uid)
   local gx, gy, gl = get_position(ghost)
 
   --CO fixes
