@@ -65,7 +65,7 @@ local function set_hh_values(hh_uid)
   hh.color.r = 0.9
   hh.color.g = 0.5
   hh.color.b = 0.5
-  hh.stun_timer = hh_stun_start*60
+  hh:stun(hh_stun_start*60)
   local hht = get_type(char_type)
   hht.acceleration = DEFAULT_ACCELERATION*hh_speed
   hht.max_speed = DEFAULT_MAX_SPEED*hh_speed
@@ -292,7 +292,7 @@ function to_ghost()
       hh.flags = clr_flag(hh.flags, 29)
       hh.health = hh_health
       if #get_entities_at(0, MASK.LAVA, hhx, hhy, hhl, 0.8) == 0 then
-        hh.stun_timer = hh_revive_stun_time
+        hh:stun(hh_revive_stun_time)
       else
         spawn_hh_ghost()
       end
