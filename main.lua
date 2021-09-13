@@ -323,9 +323,10 @@ function ghostf()
   elseif gy < by2 then move_entity(ghost, gx, by1, 0, 0) end
 
   local hhx, hhy, hhl = get_position(hh_uid)
-  local ents = get_entities_at(0, MASK.FLOOR, gx, gy, gl, 0.7)
+  local hitbox = get_hitbox(ghost)
+  local ents = get_entities_overlapping_hitbox(0, MASK.FLOOR | MASK.ACTIVEFLOOR, hitbox, gl)
   ents = get_blocks(ents)
-  if math.abs(px-gx) < 3.5 and math.abs(py-gy) < 2 and gl == hhl and #ents == 0 and #get_entities_at(0, MASK.ACTIVEFLOOR, gx, gy, gl, 0.7) == 0 and #get_entities_at(0, MASK.LAVA, gx, gy, gl, 0.8) == 0 or pl ~= hhl then
+  if math.abs(px-gx) < 3.5 and math.abs(py-gy) < 2 and gl == hhl and #ents == 0 and #get_entities_at(0, MASK.LAVA, gx, gy, gl, 0.8) == 0 or pl ~= hhl then
     if pl == hhl then
       move_entity(hh_uid, gx, gy, 0, 0)
     else
@@ -364,7 +365,7 @@ function ghostf()
 end
 
 --GUI
-widgetOpen = true
+widgetOpen = false
 register_option_button("open", "Edit additional features", function()
     widgetOpen = true
 end)
@@ -387,12 +388,10 @@ set_callback(function(draw_ctx)
       hh_angry_ghost_check = hh_angry_ghost_check and not hh_no_corpse_revive_check
       hh_revive_time = draw_ctx:win_slider_int("Seconds for a hired hand to revive", hh_revive_time, 0, 60)
       gh_velocity = draw_ctx:win_slider_int("Hired hand ghost velocity", gh_velocity, 2, 10)
-      hh_revive_stun_time = draw_ctx:win_slider_int("Ticks a hh is stunned after reviving 60=1s", hh_revive_stun_time, 2, 300)
+      hh_revive_stun_time = draw_ctx:win_slider_int("Frames a hh is stunned after reviving 60=1s", hh_revive_stun_time, 2, 300)
       hh_speed = draw_ctx:win_slider_float("Hired hands speed (of all hhs)", hh_speed, 0.01, 4.0)
       hh_take_no_damage_check = draw_ctx:win_check("Hired hand can't take damage", hh_take_no_damage_check)
       kill_hhs_check = draw_ctx:win_check("Kill all other hired hands", kill_hhs_check)
     end)
-  end  
+  end
 end, ON.GUIFRAME)
-
-
